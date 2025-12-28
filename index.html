@@ -2,188 +2,133 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>FPS CS Arena</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FPS Arena</title>
 <style>
-html,body{margin:0;overflow:hidden;background:#c8c8c8;font-family:Arial}
-#hud{position:fixed;top:10px;left:10px;font:bold 18px Arial;z-index:10}
-#weapon{position:fixed;bottom:10px;left:10px;font:16px Arial;z-index:10}
-#cross{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);font-size:26px;pointer-events:none}
-#shoot{position:fixed;bottom:40px;right:40px;width:70px;height:70px;border-radius:50%;background:#8b0000;color:white;font-size:24px;border:none;z-index:10}
-#switch{position:fixed;bottom:130px;right:40px;width:70px;height:50px;border-radius:10px;background:#333;color:white;border:none;z-index:10}
-#joy{position:fixed;bottom:40px;left:40px;width:120px;height:120px;border-radius:50%;background:rgba(0,0,0,.25);z-index:10}
+body { margin:0; overflow:hidden; background:#bbb; }
+#hud {
+  position:fixed;
+  top:10px; left:10px;
+  font-family:Arial;
+  color:#000;
+  font-size:18px;
+}
+#crosshair {
+  position:fixed;
+  top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  font-size:24px;
+}
+#fire {
+  position:fixed;
+  bottom:40px; right:40px;
+  width:80px; height:80px;
+  border-radius:50%;
+  background:darkred;
+  color:white;
+  font-size:24px;
+}
+#reload {
+  position:fixed;
+  bottom:140px; right:40px;
+  width:80px; height:50px;
+}
+#joy {
+  position:fixed;
+  bottom:40px; left:40px;
+  width:120px; height:120px;
+  border-radius:50%;
+  background:rgba(0,0,0,.2);
+}
 </style>
 </head>
 <body>
 
-<div id="hud">❤️ Vida: 100</div>
-<div id="weapon">🔫 Pistola</div>
-<div id="cross">+</div>
-<button id="shoot">🔫</button>
-<button id="switch">🔄</button>
+<div id="hud">❤️ Vida: <span id="life">100</span> | 🔫 <span id="weapon">Rifle</span></div>
+<div id="crosshair">+</div>
 <div id="joy"></div>
+<button id="fire">🔫</button>
+<button id="reload">⟳</button>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 
 <script>
-// ===== CENA =====
-const scene=new THREE.Scene();
-scene.background=new THREE.Color(0xc8c8c8);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xcccccc);
 
-const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
-camera.position.set(0,1.6,8);
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+camera.position.y = 1.6;
 
-const renderer=new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(innerWidth,innerHeight);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// ===== LUZ =====
-scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
-const dLight=new THREE.DirectionalLight(0xffffff,0.6);
-dLight.position.set(10,20,5);
-scene.add(dLight);
+const light = new THREE.HemisphereLight(0xffffff,0x444444);
+scene.add(light);
 
-// ===== CHÃO =====
-const floor=new THREE.Mesh(
-  new THREE.PlaneGeometry(300,300),
-  new THREE.MeshStandardMaterial({color:0xaaaaaa})
+// chão
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(50,50),
+  new THREE.MeshStandardMaterial({color:0x999999})
 );
-floor.rotation.x=-Math.PI/2;
+floor.rotation.x = -Math.PI/2;
 scene.add(floor);
 
-// ===== FUNÇÃO DE PAREDE =====
-const walls=[];
+// paredes
 function wall(x,z,w,d){
-  const m=new THREE.Mesh(
+  const m = new THREE.Mesh(
     new THREE.BoxGeometry(w,3,d),
-    new THREE.MeshStandardMaterial({color:0x7a7a7a})
+    new THREE.MeshStandardMaterial({color:0x666666})
   );
   m.position.set(x,1.5,z);
   scene.add(m);
-  walls.push(m);
+}
+wall(0,-10,20,1);
+wall(0,10,20,1);
+wall(-10,0,1,20);
+wall(10,0,1,20);
+wall(0,0,4,4);
+
+// arma
+let ammo = 30, reloading=false;
+document.getElementById("fire").onclick = () => {
+  if(ammo>0 && !reloading){
+    ammo--;
+  }
+}
+document.getElementById("reload").onclick = () => {
+  if(!reloading){
+    reloading=true;
+    setTimeout(()=>{ ammo=30; reloading=false; },1500);
+  }
 }
 
-// ===== MAPA MISTO (ABERTO + FECHADO) =====
-// Arena central
-wall(0,0,20,2);
-wall(0,12,20,2);
-wall(12,0,2,20);
-wall(-12,0,2,20);
+// movimento
+let move = {x:0,z:0};
+const speed = 0.08;
 
-// Corredores fechados
-wall(30,0,3,30);
-wall(-30,0,3,30);
-
-// Covers
-wall(6,6,4,4);
-wall(-6,6,4,4);
-wall(6,-6,4,4);
-wall(-6,-6,4,4);
-
-// Entradas laterais
-wall(0,30,20,3);
-wall(0,-30,20,3);
-
-// ===== ARMAS =====
-const weapons=[
-  {name:"Pistola", fireRate:400, speed:0.6, recoil:0.02},
-  {name:"Rifle", fireRate:120, speed:1.0, recoil:0.05}
-];
-let weaponIndex=0,lastShot=0;
-function updateWeapon(){
-  document.getElementById("weapon").innerText="🔫 "+weapons[weaponIndex].name;
-}
-updateWeapon();
-
-// ===== CONTROLES =====
-let yaw=0;
-let moveX=0,moveY=0;
-
-// PC
-const keys={};
-addEventListener("keydown",e=>{
-  keys[e.key]=true;
-  if(e.key==="1"){weaponIndex=0;updateWeapon();}
-  if(e.key==="2"){weaponIndex=1;updateWeapon();}
-});
-addEventListener("keyup",e=>keys[e.key]=false);
-addEventListener("mousemove",e=>{
-  if(document.pointerLockElement) yaw-=e.movementX*0.002;
-});
-addEventListener("click",()=>document.body.requestPointerLock());
-
-// MOBILE – JOYSTICK
-const joy=document.getElementById("joy");
+const joy = document.getElementById("joy");
 joy.addEventListener("touchmove",e=>{
-  const t=e.touches[0];
-  const r=joy.getBoundingClientRect();
-  moveX=(t.clientX-(r.left+r.width/2))/40;
-  moveY=(t.clientY-(r.top+r.height/2))/40;
+  const r = joy.getBoundingClientRect();
+  const x = e.touches[0].clientX - r.left - r.width/2;
+  const y = e.touches[0].clientY - r.top - r.height/2;
+  move.x = x/60;
+  move.z = y/60;
 });
-joy.addEventListener("touchend",()=>{moveX=0;moveY=0});
 
-// MOBILE – MIRA
-let lastX=null;
-addEventListener("touchmove",e=>{
-  if(e.target.id==="joy")return;
-  if(lastX!==null) yaw-=(e.touches[0].clientX-lastX)*0.005;
-  lastX=e.touches[0].clientX;
+document.addEventListener("mousemove",e=>{
+  camera.rotation.y -= e.movementX * 0.002;
 });
-addEventListener("touchend",()=>lastX=null);
 
-// TROCA MOBILE
-document.getElementById("switch").onclick=()=>{
-  weaponIndex=(weaponIndex+1)%weapons.length;
-  updateWeapon();
-};
+document.body.addEventListener("click",()=>renderer.domElement.requestPointerLock());
 
-// ===== TIROS =====
-const bullets=[];
-document.getElementById("shoot").onclick=shoot;
-addEventListener("keydown",e=>{if(e.code==="Space")shoot();});
-
-function shoot(){
-  const w=weapons[weaponIndex];
-  const now=Date.now();
-  if(now-lastShot<w.fireRate)return;
-  lastShot=now;
-
-  yaw+=(Math.random()-0.5)*w.recoil;
-
-  const b=new THREE.Mesh(
-    new THREE.SphereGeometry(0.05),
-    new THREE.MeshBasicMaterial({color:"yellow"})
-  );
-  b.position.copy(camera.position);
-  b.dir=new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
-  b.speed=w.speed;
-  scene.add(b);
-  bullets.push(b);
-}
-
-// ===== LOOP =====
 function loop(){
-  requestAnimationFrame(loop);
-  camera.rotation.y=yaw;
-
-  let forward=(keys.w?1:0)-(keys.s?1:0)+moveY;
-  let side=(keys.d?1:0)-(keys.a?1:0)+moveX;
-  const speed=0.12;
-
-  camera.position.x+=Math.sin(yaw)*forward*speed;
-  camera.position.z+=Math.cos(yaw)*forward*speed;
-  camera.position.x+=Math.sin(yaw+Math.PI/2)*side*speed;
-  camera.position.z+=Math.cos(yaw+Math.PI/2)*side*speed;
-
-  bullets.forEach((b,i)=>{
-    b.position.add(b.dir.clone().multiplyScalar(b.speed));
-    if(b.position.length()>400){
-      scene.remove(b);
-      bullets.splice(i,1);
-    }
-  });
+  camera.position.x += Math.sin(camera.rotation.y)*-move.z*speed;
+  camera.position.z += Math.cos(camera.rotation.y)*-move.z*speed;
+  camera.position.x += Math.cos(camera.rotation.y)*move.x*speed;
+  camera.position.z -= Math.sin(camera.rotation.y)*move.x*speed;
 
   renderer.render(scene,camera);
+  requestAnimationFrame(loop);
 }
 loop();
 </script>
