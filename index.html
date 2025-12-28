@@ -1,192 +1,204 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
 <title>FPS Competitivo</title>
 <style>
-body {
+html, body {
   margin: 0;
+  padding: 0;
   overflow: hidden;
-  background: #111;
-  color: white;
+  background: #e5e5e5;
   font-family: Arial, sans-serif;
 }
+
 #hud {
   position: fixed;
   top: 10px;
   left: 10px;
-  font-size: 14px;
+  color: #000;
+  font-weight: bold;
+  z-index: 10;
 }
-button {
+
+#crosshair {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  margin-top: -10px;
+  pointer-events: none;
+}
+
+#crosshair::before,
+#crosshair::after {
+  content: "";
+  position: absolute;
+  background: black;
+}
+
+#crosshair::before {
+  width: 2px;
+  height: 20px;
+  left: 9px;
+}
+
+#crosshair::after {
+  height: 2px;
+  width: 20px;
+  top: 9px;
+}
+
+.btn {
   position: fixed;
   width: 60px;
   height: 60px;
   border-radius: 50%;
   border: none;
-  background: #333;
+  background: rgba(0,0,0,0.6);
   color: white;
   font-size: 20px;
-  opacity: 0.8;
 }
-#up { bottom: 120px; left: 80px; }
-#down { bottom: 20px; left: 80px; }
-#left { bottom: 70px; left: 20px; }
-#right { bottom: 70px; left: 140px; }
-#shoot { bottom: 70px; right: 40px; background: darkred; }
+
+#fw { bottom: 120px; left: 80px; }
+#bw { bottom: 20px; left: 80px; }
+#lt { bottom: 70px; left: 20px; }
+#rt { bottom: 70px; left: 140px; }
+#fire { bottom: 70px; right: 40px; background: darkred; }
 </style>
 </head>
 
 <body>
-<canvas id="game"></canvas>
+<div id="hud">❤️ Vida: <span id="life">100</span></div>
+<div id="crosshair"></div>
 
-<div id="hud">
-❤️ Vida: <span id="life">100</span> |
-🎯 Pontos: <span id="score">0</span>
-</div>
+<button id="fw" class="btn">▲</button>
+<button id="bw" class="btn">▼</button>
+<button id="lt" class="btn">◀</button>
+<button id="rt" class="btn">▶</button>
+<button id="fire" class="btn">🔫</button>
 
-<button id="up">▲</button>
-<button id="down">▼</button>
-<button id="left">◀</button>
-<button id="right">▶</button>
-<button id="shoot">🔫</button>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-canvas.width = 1200;
-canvas.height = 600;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xe5e5e5);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+camera.position.set(0, 1.6, 5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Luz
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+dirLight.position.set(5,10,5);
+scene.add(dirLight);
+
+// Chão
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(50,50),
+  new THREE.MeshStandardMaterial({ color: 0xcccccc })
+);
+floor.rotation.x = -Math.PI/2;
+scene.add(floor);
+
+// ===== MAPA CS-STYLE (ORIGINAL) =====
+const walls = [];
+function wall(x,z,w,d){
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w,3,d),
+    new THREE.MeshStandardMaterial({ color: 0x999999 })
+  );
+  m.position.set(x,1.5,z);
+  scene.add(m);
+  walls.push(m);
+}
+
+wall(0,-10,20,1);
+wall(0,10,20,1);
+wall(-10,0,1,20);
+wall(10,0,1,20);
+
+wall(0,0,6,1);
+wall(-5,3,1,6);
+wall(5,-3,1,6);
 
 // ===== PLAYER =====
-const player = {
-  x: 100,
-  y: 300,
-  size: 14,
-  speed: 2,
-  life: 100
-};
+let life = 100;
+let velocity = { x:0, z:0 };
+let yaw = 0;
 
-// ===== MAPA ORIGINAL (CS-STYLE) =====
-const walls = [
-  { x: 0, y: 0, w: 1200, h: 20 },
-  { x: 0, y: 580, w: 1200, h: 20 },
-  { x: 0, y: 0, w: 20, h: 600 },
-  { x: 1180, y: 0, w: 20, h: 600 },
-
-  { x: 450, y: 180, w: 300, h: 40 },
-  { x: 450, y: 380, w: 300, h: 40 },
-
-  { x: 260, y: 120, w: 40, h: 360 },
-  { x: 900, y: 120, w: 40, h: 360 },
-
-  { x: 350, y: 90, w: 250, h: 30 },
-  { x: 600, y: 480, w: 250, h: 30 }
-];
-
-// ===== INIMIGOS =====
-let enemies = [];
-for (let i = 0; i < 8; i++) {
-  enemies.push({
-    x: Math.random() * 900 + 200,
-    y: Math.random() * 400 + 100,
-    size: 12
-  });
-}
-
-let bullets = [];
-let score = 0;
-
-// ===== COLISÃO =====
-function collides(x, y, size) {
-  for (let w of walls) {
-    if (
-      x < w.x + w.w &&
-      x + size > w.x &&
-      y < w.y + w.h &&
-      y + size > w.y
-    ) return true;
-  }
-  return false;
-}
-
-// ===== CONTROLES =====
-let keys = {};
+const keys = {};
 document.addEventListener("keydown", e => keys[e.key] = true);
 document.addEventListener("keyup", e => keys[e.key] = false);
 
-up.onclick = () => keys["w"] = true;
-down.onclick = () => keys["s"] = true;
-left.onclick = () => keys["a"] = true;
-right.onclick = () => keys["d"] = true;
+// Mouse PC
+document.addEventListener("mousemove", e => {
+  if (document.pointerLockElement === document.body) {
+    yaw -= e.movementX * 0.002;
+    camera.rotation.y = yaw;
+  }
+});
 
-shoot.onclick = shootBullet;
+document.body.addEventListener("click", () => {
+  document.body.requestPointerLock();
+});
+
+// Mobile
+fw.ontouchstart = () => keys["w"] = true;
+bw.ontouchstart = () => keys["s"] = true;
+lt.ontouchstart = () => keys["a"] = true;
+rt.ontouchstart = () => keys["d"] = true;
+
+fw.ontouchend = bw.ontouchend =
+lt.ontouchend = rt.ontouchend = () => keys = {};
 
 // ===== TIRO =====
-function shootBullet() {
-  bullets.push({
-    x: player.x + player.size / 2,
-    y: player.y + player.size / 2,
-    vx: 5,
-    vy: 0
-  });
+const bullets = [];
+fire.onclick = shoot;
+document.addEventListener("mousedown", shoot);
+
+function shoot(){
+  const geo = new THREE.SphereGeometry(0.05,8,8);
+  const mat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  const b = new THREE.Mesh(geo,mat);
+  b.position.copy(camera.position);
+  b.dir = new THREE.Vector3(
+    -Math.sin(yaw),0,-Math.cos(yaw)
+  );
+  scene.add(b);
+  bullets.push(b);
 }
 
-// ===== GAME LOOP =====
-function game() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+// ===== LOOP =====
+function animate(){
+  requestAnimationFrame(animate);
 
-  // movimento player
-  let nx = player.x;
-  let ny = player.y;
+  const speed = 0.08;
+  if(keys["w"]) velocity.z = -speed;
+  if(keys["s"]) velocity.z = speed;
+  if(keys["a"]) velocity.x = -speed;
+  if(keys["d"]) velocity.x = speed;
 
-  if (keys["w"]) ny -= player.speed;
-  if (keys["s"]) ny += player.speed;
-  if (keys["a"]) nx -= player.speed;
-  if (keys["d"]) nx += player.speed;
+  camera.position.x += Math.sin(yaw)*velocity.z + Math.cos(yaw)*velocity.x;
+  camera.position.z += Math.cos(yaw)*velocity.z - Math.sin(yaw)*velocity.x;
 
-  if (!collides(nx, player.y, player.size)) player.x = nx;
-  if (!collides(player.x, ny, player.size)) player.y = ny;
+  velocity.x *= 0.8;
+  velocity.z *= 0.8;
 
-  // desenhar mapa
-  ctx.fillStyle = "#333";
-  walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
-
-  // player
-  ctx.fillStyle = "cyan";
-  ctx.fillRect(player.x, player.y, player.size, player.size);
-
-  // balas
-  ctx.fillStyle = "yellow";
-  bullets.forEach(b => {
-    b.x += b.vx;
-    ctx.fillRect(b.x, b.y, 4, 2);
+  bullets.forEach(b=>{
+    b.position.add(b.dir.clone().multiplyScalar(0.5));
   });
 
-  // inimigos
-  ctx.fillStyle = "red";
-  enemies.forEach((e, i) => {
-    ctx.fillRect(e.x, e.y, e.size, e.size);
-
-    bullets.forEach((b, bi) => {
-      if (
-        b.x < e.x + e.size &&
-        b.x + 4 > e.x &&
-        b.y < e.y + e.size &&
-        b.y + 2 > e.y
-      ) {
-        enemies.splice(i, 1);
-        bullets.splice(bi, 1);
-        score++;
-      }
-    });
-  });
-
-  document.getElementById("life").innerText = player.life;
-  document.getElementById("score").innerText = score;
-
-  requestAnimationFrame(game);
+  renderer.render(scene,camera);
 }
 
-game();
+animate();
 </script>
 </body>
 </html>
