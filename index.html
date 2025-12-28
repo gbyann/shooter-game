@@ -2,125 +2,176 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>FPS Web – CS + Arena</title>
+<title>FPS Arena</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-html,body{margin:0;overflow:hidden;background:#e9e9e9;font-family:Arial}
-#hud{position:fixed;top:10px;left:10px;color:#000;font-weight:bold}
-#cross{position:fixed;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;pointer-events:none}
-#cross:before,#cross:after{content:"";position:absolute;background:#000}
-#cross:before{width:2px;height:16px;left:7px}
-#cross:after{height:2px;width:16px;top:7px}
-.btn{position:fixed;width:60px;height:60px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:20px}
-#fw{bottom:120px;left:80px}
-#bw{bottom:20px;left:80px}
-#lt{bottom:70px;left:20px}
-#rt{bottom:70px;left:140px}
-#fire{bottom:70px;right:40px;background:#a00}
-canvas{display:block}
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #000;
+}
+canvas {
+  display: block;
+}
+#hud {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  color: white;
+  font-family: Arial;
+  font-size: 14px;
+}
+#crosshair {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  margin-top: -10px;
+}
+#crosshair:before, #crosshair:after {
+  content: "";
+  position: absolute;
+  background: white;
+}
+#crosshair:before {
+  width: 20px;
+  height: 2px;
+  top: 9px;
+}
+#crosshair:after {
+  width: 2px;
+  height: 20px;
+  left: 9px;
+}
 </style>
 </head>
+
 <body>
-
-<div id="hud">❤️ Vida: <span id="life">100</span></div>
-<div id="cross"></div>
-
-<button id="fw" class="btn">▲</button>
-<button id="bw" class="btn">▼</button>
-<button id="lt" class="btn">◀</button>
-<button id="rt" class="btn">▶</button>
-<button id="fire" class="btn">🔫</button>
-
-<canvas id="c"></canvas>
+<canvas id="game"></canvas>
+<div id="hud">❤️ Vida: 100</div>
+<div id="crosshair"></div>
 
 <script>
-/* ===== CONFIG ===== */
-const canvas=document.getElementById("c");
-const ctx=canvas.getContext("2d");
-canvas.width=innerWidth; canvas.height=innerHeight;
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-const FOV=Math.PI/3;
-const SPEED=0.08;
-let life=100;
-
-/* ===== MAPA (CS + ARENA) =====
-1 = parede | 0 = chão
-Layout equilibrado, com arena central + corredores
-*/
-const map=[
-[1,1,1,1,1,1,1,1,1,1,1,1],
-[1,0,0,0,0,0,0,0,0,0,0,1],
-[1,0,1,0,1,0,0,1,0,1,0,1],
-[1,0,0,0,0,0,0,0,0,0,0,1],
-[1,0,1,0,1,0,0,1,0,1,0,1],
-[1,0,0,0,0,0,0,0,0,0,0,1],
-[1,0,0,1,0,1,1,0,1,0,0,1],
-[1,0,0,0,0,0,0,0,0,0,0,1],
-[1,1,1,1,1,1,1,1,1,1,1,1]
+// ===== MAPA (CS STYLE) =====
+const map = [
+  "111111111111",
+  "1..........1",
+  "1..1111....1",
+  "1......1...1",
+  "1..1.......1",
+  "1....111...1",
+  "1..........1",
+  "111111111111"
 ];
-const MW=map[0].length, MH=map.length;
+const TILE = 64;
 
-/* ===== PLAYER ===== */
-let px=2.5, py=2.5, pa=0;
+// ===== PLAYER =====
+let player = {
+  x: 150,
+  y: 150,
+  angle: 0,
+  speed: 2
+};
 
-/* ===== INPUT ===== */
-const keys={};
-addEventListener("keydown",e=>keys[e.key]=true);
-addEventListener("keyup",e=>keys[e.key]=false);
+// ===== CONTROLES =====
+let keys = {};
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
 
-// mouse (PC)
-addEventListener("mousemove",e=>{
-  if(document.pointerLockElement===document.body){
-    pa+=e.movementX*0.002;
+// ===== MOUSE (PC) =====
+canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
+document.addEventListener("click", () => canvas.requestPointerLock());
+document.addEventListener("mousemove", e => {
+  if (document.pointerLockElement === canvas) {
+    player.angle += e.movementX * 0.003;
   }
 });
-document.body.onclick=()=>document.body.requestPointerLock();
 
-// mobile
-fw.ontouchstart=()=>keys["w"]=true;
-bw.ontouchstart=()=>keys["s"]=true;
-lt.ontouchstart=()=>keys["a"]=true;
-rt.ontouchstart=()=>keys["d"]=true;
-[fw,bw,lt,rt].forEach(b=>b.ontouchend=()=>keys[b.id==="fw"?"w":b.id==="bw"?"s":b.id==="lt"?"a":"d"]=false);
+// ===== TOQUE (MOBILE) =====
+let touching = false;
+let lastX = 0;
 
-/* ===== RAYCAST ===== */
-function castRay(angle){
-  let sin=Math.sin(angle), cos=Math.cos(angle);
-  for(let d=0; d<20; d+=0.02){
-    let x=px+cos*d, y=py+sin*d;
-    if(map[Math.floor(y)]?.[Math.floor(x)]===1){
-      return d;
+canvas.addEventListener("touchstart", e => {
+  touching = true;
+  lastX = e.touches[0].clientX;
+});
+
+canvas.addEventListener("touchend", () => touching = false);
+
+canvas.addEventListener("touchmove", e => {
+  if (!touching) return;
+  let dx = e.touches[0].clientX - lastX;
+  player.angle += dx * 0.004;
+  lastX = e.touches[0].clientX;
+});
+
+// ===== RAYCAST =====
+function castRay(angle) {
+  let sin = Math.sin(angle);
+  let cos = Math.cos(angle);
+
+  for (let i = 0; i < 800; i++) {
+    let x = player.x + cos * i;
+    let y = player.y + sin * i;
+
+    let mx = Math.floor(x / TILE);
+    let my = Math.floor(y / TILE);
+
+    if (map[my] && map[my][mx] === "1") {
+      return i;
     }
   }
-  return 20;
+  return 800;
 }
 
-/* ===== LOOP ===== */
-function loop(){
-  requestAnimationFrame(loop);
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+// ===== GAME LOOP =====
+function game() {
+  ctx.fillStyle = "#222";
+  ctx.fillRect(0, 0, canvas.width, canvas.height / 2);
+  ctx.fillStyle = "#555";
+  ctx.fillRect(0, canvas.height / 2, canvas.width, canvas.height / 2);
 
-  // movimento
-  let nx=px, ny=py;
-  if(keys["w"]){nx+=Math.cos(pa)*SPEED; ny+=Math.sin(pa)*SPEED}
-  if(keys["s"]){nx-=Math.cos(pa)*SPEED; ny-=Math.sin(pa)*SPEED}
-  if(keys["a"]){nx+=Math.cos(pa-Math.PI/2)*SPEED; ny+=Math.sin(pa-Math.PI/2)*SPEED}
-  if(keys["d"]){nx+=Math.cos(pa+Math.PI/2)*SPEED; ny+=Math.sin(pa+Math.PI/2)*SPEED}
-  if(map[Math.floor(py)]?.[Math.floor(nx)]===0) px=nx;
-  if(map[Math.floor(ny)]?.[Math.floor(px)]===0) py=ny;
+  const FOV = Math.PI / 3;
+  const rays = canvas.width;
 
-  // render 3D
-  for(let x=0;x<canvas.width;x++){
-    let ang=pa-FOV/2+FOV*x/canvas.width;
-    let dist=castRay(ang)*Math.cos(ang-pa);
-    let h=Math.min(canvas.height, canvas.height/(dist));
-    let shade=200/(1+dist*dist*0.2);
-    ctx.fillStyle=`rgb(${shade},${shade},${shade})`;
-    ctx.fillRect(x,(canvas.height-h)/2,1,h);
+  for (let i = 0; i < rays; i++) {
+    let rayAngle = player.angle - FOV / 2 + (i / rays) * FOV;
+    let dist = castRay(rayAngle);
+    let wallHeight = (TILE * 500) / dist;
+
+    ctx.fillStyle = "#888";
+    ctx.fillRect(
+      i,
+      canvas.height / 2 - wallHeight / 2,
+      1,
+      wallHeight
+    );
   }
 
-  document.getElementById("life").textContent=life;
+  // movimento
+  if (keys["w"]) {
+    player.x += Math.cos(player.angle) * player.speed;
+    player.y += Math.sin(player.angle) * player.speed;
+  }
+  if (keys["s"]) {
+    player.x -= Math.cos(player.angle) * player.speed;
+    player.y -= Math.sin(player.angle) * player.speed;
+  }
+  if (keys["a"]) player.angle -= 0.05;
+  if (keys["d"]) player.angle += 0.05;
+
+  requestAnimationFrame(game);
 }
-loop();
+
+game();
 </script>
 </body>
 </html>
