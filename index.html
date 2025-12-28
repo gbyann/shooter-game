@@ -2,176 +2,135 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>FPS Arena</title>
+<title>FPS Web – Armas</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-html, body {
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  background: #000;
-}
-canvas {
-  display: block;
-}
-#hud {
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  color: white;
-  font-family: Arial;
-  font-size: 14px;
-}
-#crosshair {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  width: 20px;
-  height: 20px;
-  margin-left: -10px;
-  margin-top: -10px;
-}
-#crosshair:before, #crosshair:after {
-  content: "";
-  position: absolute;
-  background: white;
-}
-#crosshair:before {
-  width: 20px;
-  height: 2px;
-  top: 9px;
-}
-#crosshair:after {
-  width: 2px;
-  height: 20px;
-  left: 9px;
-}
+html,body{margin:0;overflow:hidden;background:#bfbfbf;font-family:Arial}
+#hud{position:fixed;top:10px;left:10px;color:#000;font-weight:bold;z-index:10}
+#weapon{position:fixed;bottom:10px;left:10px;color:#000;font-weight:bold}
+#cross{position:fixed;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;pointer-events:none}
+#cross:before,#cross:after{content:"";position:absolute;background:#000}
+#cross:before{width:2px;height:18px;left:8px}
+#cross:after{height:2px;width:18px;top:8px}
+#fire{position:fixed;bottom:20px;right:20px;width:70px;height:70px;border-radius:50%;border:none;background:#900;color:#fff;font-size:22px}
 </style>
 </head>
-
 <body>
-<canvas id="game"></canvas>
-<div id="hud">❤️ Vida: 100</div>
-<div id="crosshair"></div>
+
+<div id="hud">❤️ Vida: <span id="life">100</span></div>
+<div id="weapon">🔫 Pistola</div>
+<div id="cross"></div>
+<button id="fire">🔫</button>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+/* ===== CENA ===== */
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0xbfbfbf);
 
-// ===== MAPA (CS STYLE) =====
-const map = [
-  "111111111111",
-  "1..........1",
-  "1..1111....1",
-  "1......1...1",
-  "1..1.......1",
-  "1....111...1",
-  "1..........1",
-  "111111111111"
-];
-const TILE = 64;
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+camera.position.set(0,1.6,5);
 
-// ===== PLAYER =====
-let player = {
-  x: 150,
-  y: 150,
-  angle: 0,
-  speed: 2
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+document.body.appendChild(renderer.domElement);
+
+/* ===== LUZ ===== */
+scene.add(new THREE.AmbientLight(0xffffff,0.7));
+const light=new THREE.DirectionalLight(0xffffff,0.5);
+light.position.set(5,10,5);
+scene.add(light);
+
+/* ===== CHÃO ===== */
+const floor=new THREE.Mesh(
+  new THREE.PlaneGeometry(100,100),
+  new THREE.MeshStandardMaterial({color:0xaaaaaa})
+);
+floor.rotation.x=-Math.PI/2;
+scene.add(floor);
+
+/* ===== ALVOS (TESTE DE TIRO) ===== */
+const targets=[];
+for(let i=0;i<5;i++){
+  const t=new THREE.Mesh(
+    new THREE.BoxGeometry(1,1.8,1),
+    new THREE.MeshStandardMaterial({color:0xaa0000})
+  );
+  t.position.set(Math.random()*10-5,0.9,Math.random()*-10);
+  scene.add(t);
+  targets.push(t);
+}
+
+/* ===== PLAYER ===== */
+let life=100;
+let yaw=0,pitch=0;
+let canShoot=true;
+
+/* ===== ARMAS ===== */
+const weapons={
+  pistol:{name:"Pistola",damage:25,rate:400,recoil:0.02},
+  rifle:{name:"Rifle",damage:15,rate:120,recoil:0.04}
 };
+let currentWeapon=weapons.pistol;
 
-// ===== CONTROLES =====
-let keys = {};
-document.addEventListener("keydown", e => keys[e.key] = true);
-document.addEventListener("keyup", e => keys[e.key] = false);
+/* ===== INPUT ===== */
+const keys={};
+addEventListener("keydown",e=>{
+  keys[e.key]=true;
+  if(e.key==="1"){currentWeapon=weapons.pistol;weapon.innerText="🔫 Pistola";}
+  if(e.key==="2"){currentWeapon=weapons.rifle;weapon.innerText="🔫 Rifle";}
+});
+addEventListener("keyup",e=>keys[e.key]=false);
 
-// ===== MOUSE (PC) =====
-canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
-document.addEventListener("click", () => canvas.requestPointerLock());
-document.addEventListener("mousemove", e => {
-  if (document.pointerLockElement === canvas) {
-    player.angle += e.movementX * 0.003;
+/* ===== MOUSE (PC) ===== */
+addEventListener("mousemove",e=>{
+  if(document.pointerLockElement===document.body){
+    yaw-=e.movementX*0.002;
+    pitch-=e.movementY*0.002;
+    pitch=Math.max(-1.2,Math.min(1.2,pitch));
+    camera.rotation.set(pitch,yaw,0);
   }
 });
+document.body.onclick=()=>document.body.requestPointerLock();
 
-// ===== TOQUE (MOBILE) =====
-let touching = false;
-let lastX = 0;
+/* ===== MOBILE TIRO ===== */
+fire.onclick=shoot;
 
-canvas.addEventListener("touchstart", e => {
-  touching = true;
-  lastX = e.touches[0].clientX;
-});
+/* ===== TIRO (RAYCAST) ===== */
+const raycaster=new THREE.Raycaster();
+function shoot(){
+  if(!canShoot) return;
+  canShoot=false;
+  setTimeout(()=>canShoot=true,currentWeapon.rate);
 
-canvas.addEventListener("touchend", () => touching = false);
+  pitch-=currentWeapon.recoil;
 
-canvas.addEventListener("touchmove", e => {
-  if (!touching) return;
-  let dx = e.touches[0].clientX - lastX;
-  player.angle += dx * 0.004;
-  lastX = e.touches[0].clientX;
-});
+  raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
+  const hits=raycaster.intersectObjects(targets);
 
-// ===== RAYCAST =====
-function castRay(angle) {
-  let sin = Math.sin(angle);
-  let cos = Math.cos(angle);
-
-  for (let i = 0; i < 800; i++) {
-    let x = player.x + cos * i;
-    let y = player.y + sin * i;
-
-    let mx = Math.floor(x / TILE);
-    let my = Math.floor(y / TILE);
-
-    if (map[my] && map[my][mx] === "1") {
-      return i;
-    }
+  if(hits.length){
+    const hit=hits[0].object;
+    hit.material.color.set(0x333333);
+    scene.remove(hit);
+    targets.splice(targets.indexOf(hit),1);
   }
-  return 800;
 }
 
-// ===== GAME LOOP =====
-function game() {
-  ctx.fillStyle = "#222";
-  ctx.fillRect(0, 0, canvas.width, canvas.height / 2);
-  ctx.fillStyle = "#555";
-  ctx.fillRect(0, canvas.height / 2, canvas.width, canvas.height / 2);
+/* ===== LOOP ===== */
+function animate(){
+  requestAnimationFrame(animate);
 
-  const FOV = Math.PI / 3;
-  const rays = canvas.width;
+  const speed=0.08;
+  if(keys["w"]){camera.position.x+=Math.sin(yaw)*speed;camera.position.z+=Math.cos(yaw)*speed;}
+  if(keys["s"]){camera.position.x-=Math.sin(yaw)*speed;camera.position.z-=Math.cos(yaw)*speed;}
+  if(keys["a"]){camera.position.x+=Math.sin(yaw-Math.PI/2)*speed;camera.position.z+=Math.cos(yaw-Math.PI/2)*speed;}
+  if(keys["d"]){camera.position.x+=Math.sin(yaw+Math.PI/2)*speed;camera.position.z+=Math.cos(yaw+Math.PI/2)*speed;}
 
-  for (let i = 0; i < rays; i++) {
-    let rayAngle = player.angle - FOV / 2 + (i / rays) * FOV;
-    let dist = castRay(rayAngle);
-    let wallHeight = (TILE * 500) / dist;
-
-    ctx.fillStyle = "#888";
-    ctx.fillRect(
-      i,
-      canvas.height / 2 - wallHeight / 2,
-      1,
-      wallHeight
-    );
-  }
-
-  // movimento
-  if (keys["w"]) {
-    player.x += Math.cos(player.angle) * player.speed;
-    player.y += Math.sin(player.angle) * player.speed;
-  }
-  if (keys["s"]) {
-    player.x -= Math.cos(player.angle) * player.speed;
-    player.y -= Math.sin(player.angle) * player.speed;
-  }
-  if (keys["a"]) player.angle -= 0.05;
-  if (keys["d"]) player.angle += 0.05;
-
-  requestAnimationFrame(game);
+  document.getElementById("life").innerText=life;
+  renderer.render(scene,camera);
 }
-
-game();
+animate();
 </script>
 </body>
 </html>
