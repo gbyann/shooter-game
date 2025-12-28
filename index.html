@@ -104,3 +104,38 @@ game();
 </script>
 </body>
 </html>
+// ===== MAPA CS-STYLE (ORIGINAL) =====
+const walls = [
+  // paredes externas
+  { x: 0, y: 0, w: 1200, h: 20 },
+  { x: 0, y: 580, w: 1200, h: 20 },
+  { x: 0, y: 0, w: 20, h: 600 },
+  { x: 1180, y: 0, w: 20, h: 600 },
+
+  // blocos centrais (cover)
+  { x: 500, y: 200, w: 200, h: 40 },
+  { x: 500, y: 360, w: 200, h: 40 },
+
+  // corredores laterais
+  { x: 250, y: 120, w: 40, h: 360 },
+  { x: 910, y: 120, w: 40, h: 360 },
+
+  // paredes internas
+  { x: 350, y: 100, w: 300, h: 30 },
+  { x: 550, y: 470, w: 300, h: 30 }
+];
+
+// ===== FUNÇÃO DE COLISÃO =====
+function collides(x, y, size) {
+  for (let w of walls) {
+    if (
+      x < w.x + w.w &&
+      x + size > w.x &&
+      y < w.y + w.h &&
+      y + size > w.y
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
